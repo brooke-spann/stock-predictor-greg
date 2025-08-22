@@ -24,9 +24,9 @@
 
   const initialState = () => ({
     ticker: null,
-    seriesAsc: [],
-    startIndex: null,
-    currentIndex: null,
+    seriesAsc: [], // [{ date: 'YYYY-MM-DD', close: number }], ascending by date
+    startIndex: null, // index in seriesAsc of start date
+    currentIndex: null, // index of the latest day shown (current date)
     score: 0,
     inRound: false,
     ended: false,
@@ -57,16 +57,18 @@
     els.statusScore.textContent = String(state.score);
   }
 
-  async function fetchSeries(ticker, fnName) {
+  async function fetchTimeSeriesDailyAdjusted(ticker) {
     const params = new URLSearchParams({
-      function: fnName,
+      function: "TIME_SERIES_DAILY_ADJUSTED",
       symbol: ticker,
       apikey: API_KEY,
-      outputsize: "compact",
+      outputsize: "full",
     });
     const url = `${BASE_URL}?${params.toString()}`;
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`Network error: ${res.status}`);
+    if (!res.ok) {
+      throw new Error(`Network error: ${res.status}`);
+    }
     const data = await res.json();
     if (data.Note) {
       const note = data.Note.includes("Thank you for using Alpha Vantage")
@@ -86,11 +88,10 @@
       err.code = "INVALID_TICKER";
       throw err;
     }
-    const key = data["Time Series (Daily)"] ? "Time Series (Daily)" : data["Time Series (Digital Currency Daily)"] ? "Time Series (Digital Currency Daily)" : null;
-    const seriesObj = key ? data[key] : data["Time Series (Daily)"];
+    const seriesObj = data["Time Series (Daily)"];
     if (!seriesObj || typeof seriesObj !== "object") {
-      console.warn("Alpha Vantage unexpected response for", fnName, data);
-      const err = new Error("Unexpected API response.");
+      console.warn("Alpha Vantage unexpected response:", data);
+      const err = new Error("Unexpected API response. Please try again in a moment.");
       err.code = "NO_SERIES";
       throw err;
     }
@@ -99,15 +100,6 @@
       .filter(p => Number.isFinite(p.close))
       .sort((a, b) => new Date(a.date) - new Date(b.date));
     return seriesDesc;
-  }
-
-  async function fetchTimeSeriesWithFallback(ticker) {
-    try {
-      return await fetchSeries(ticker, "TIME_SERIES_DAILY_ADJUSTED");
-    } catch (e) {
-      if (e && e.code && e.code !== "NO_SERIES") throw e;
-      return await fetchSeries(ticker, "TIME_SERIES_DAILY");
-    }
   }
 
   function dateToYMD(d) {
@@ -159,8 +151,8 @@
           {
             label: "Close",
             data,
-            borderColor: "#F45D48",
-            backgroundColor: "rgba(244,93,72,0.15)",
+            borderColor: "#58a6ff",
+            backgroundColor: "rgba(88,166,255,0.15)",
             pointRadius: 3,
             tension: 0.25,
           },
@@ -171,16 +163,16 @@
         maintainAspectRatio: false,
         scales: {
           x: {
-            ticks: { color: "#6B7280" },
-            grid: { color: "#E5E7EB" },
+            ticks: { color: "#9da7b3" },
+            grid: { color: "#22262d" },
           },
           y: {
-            ticks: { color: "#6B7280" },
-            grid: { color: "#E5E7EB" },
+            ticks: { color: "#9da7b3" },
+            grid: { color: "#22262d" },
           },
         },
         plugins: {
-          legend: { labels: { color: "#1F2937" } },
+          legend: { labels: { color: "#c9d1d9" } },
           tooltip: { mode: "index", intersect: false },
         },
       },
@@ -211,7 +203,7 @@
     resetUIForNewGame();
     setLoading(true);
     try {
-      const seriesAsc = await fetchTimeSeriesWithFallback(ticker);
+      const seriesAsc = await fetchTimeSeriesDailyAdjusted(ticker);
       state.ticker = ticker;
       state.seriesAsc = seriesAsc;
 
@@ -241,18 +233,16 @@
       console.error(err);
       if (err.code === "RATE_LIMIT") {
         showError(err.message);
-        showNote("Alpha Vantage limits 5 requests/minute and 100/day on free tier.");
+        showNote("Alpha Vantage limits 5 requests/minute on free tier.");
       } else if (err.code === "INVALID_TICKER") {
         showError("Ticker not found. Please try another.");
       } else if (err.code === "INFORMATION") {
         showError(err.message);
-        if (/api key|invalid|not support/i.test(err.message)) {
-          showNote("Verify API key, function support, and try again later.");
+        if (/api key/i.test(err.message)) {
+          showNote("Check your API key value and daily limits.");
         }
       } else if (err.code === "INSUFFICIENT_DATA") {
         showError("Not enough data in the last 100 days for this ticker.");
-      } else if (err.code === "NO_SERIES") {
-        showError("Unexpected API response. Try again in a minute or change ticker.");
       } else {
         showError(err.message || "Something went wrong. Please try again.");
       }

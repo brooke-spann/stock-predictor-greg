@@ -69,6 +69,13 @@
     if (!res.ok) throw new Error(`Network error: ${res.status}`);
     const data = await res.json();
     if (data.Note) {
+      // Check if this is a premium endpoint error
+      if (data.Note.includes("This is a premium endpoint")) {
+        const err = new Error("Premium endpoint not available with free API key.");
+        err.code = "PREMIUM_ENDPOINT";
+        throw err;
+      }
+      // Handle rate limiting
       const note = data.Note.includes("Thank you for using Alpha Vantage")
         ? "API limit reached. Please wait a minute and try again."
         : data.Note;
@@ -77,6 +84,12 @@
       throw err;
     }
     if (data.Information) {
+      // Check if this is a premium endpoint error
+      if (data.Information.includes("This is a premium endpoint")) {
+        const err = new Error("Premium endpoint not available with free API key.");
+        err.code = "PREMIUM_ENDPOINT";
+        throw err;
+      }
       const err = new Error(data.Information);
       err.code = "INFORMATION";
       throw err;
@@ -105,7 +118,8 @@
     try {
       return await fetchSeries(ticker, "TIME_SERIES_DAILY_ADJUSTED");
     } catch (e) {
-      if (e && e.code && e.code !== "NO_SERIES") throw e;
+      // Fall back to free endpoint if premium endpoint is not available or if we get no series data
+      if (e && e.code && e.code !== "NO_SERIES" && e.code !== "PREMIUM_ENDPOINT") throw e;
       return await fetchSeries(ticker, "TIME_SERIES_DAILY");
     }
   }
